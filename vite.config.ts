@@ -27,6 +27,15 @@ export default defineConfig(() => {
             'Accept': 'application/json',
           },
         },
+        '/api/rss': {
+          target: 'https://news.google.com',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/rss/, ''),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/rss+xml, application/xml, text/xml',
+          },
+        },
       },
     },
   };

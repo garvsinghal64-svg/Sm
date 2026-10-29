@@ -42,6 +42,29 @@ app.use('/api/yahoo', async (req, res) => {
   }
 });
 
+// Production & dev proxy for Public RSS News (Google News RSS - zero cost)
+app.use('/api/rss', async (req, res) => {
+  try {
+    const targetUrl = `https://news.google.com${req.url}`;
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': 'application/rss+xml, application/xml, text/xml',
+      },
+    });
+
+    res.status(response.status);
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    const body = await response.text();
+    res.send(body);
+  } catch (err: any) {
+    res.status(502).json({
+      error: 'Proxy Error',
+      message: err.message || 'Failed to reach News RSS feed',
+    });
+  }
+});
+
 // Serve static assets from dist directory in production
 const distPath = path.resolve(__dirname, 'dist');
 app.use(express.static(distPath));

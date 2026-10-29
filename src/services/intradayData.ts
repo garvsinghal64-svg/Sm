@@ -469,3 +469,25 @@ export function createDeterministicIntradayFixture(
     errors: [],
   };
 }
+
+/**
+ * Fetches real intraday series via the zero-cost Yahoo Finance proxy (/api/yahoo/v8/finance/chart/{symbol}).
+ * Returns verified parsed IntradaySeries or throws descriptive error.
+ */
+export async function fetchLiveIntradaySeries(
+  symbol: string,
+  interval: IntradayInterval = '5m',
+  range: IntradayRange = '1d'
+): Promise<IntradaySeries> {
+  const encoded = encodeURIComponent(symbol);
+  const endpoint = `/api/yahoo/v8/finance/chart/${encoded}?interval=${interval}&range=${range}`;
+
+  const res = await fetch(endpoint);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: Failed to fetch intraday data for ${symbol}`);
+  }
+
+  const json = await res.json();
+  return parseYahooIntradayResponse(json, symbol, interval, range, Date.now());
+}
+

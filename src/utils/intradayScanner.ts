@@ -169,43 +169,35 @@ export function calculateOpeningRange(
 }
 
 /**
- * Scans an intraday series up to a given bar index (cutoffIndex) for candidate setups.
- * strictly causal: NO bars after cutoffIndex are inspected.
+ * Evaluates candidate setups at a specific bar index strictly causally.
  */
-export function scanIntradaySetups(
+function evaluateCandidatesAtBar(
   series: IntradaySeries,
-  cutoffIndex?: number,
-  costPreset: IndianMarketCostPreset = getRealisticIndianMarketCostPreset('CASH_EQUITY_INTRADAY_MIS')
+  barIdx: number,
+  prefixCandles: IntradayCandle[],
+  vwapSeries: (number | null)[],
+  atrSeries: (number | null)[],
+  rsiSeries: (number | null)[],
+  macdSeries: { macd: (number | null)[]; signal: (number | null)[]; histogram: (number | null)[] },
+  orbHigh: number | null,
+  orbLow: number | null,
+  orbFormed: boolean,
+  roundTripCostBps: number
 ): SetupCandidate[] {
-  const maxIndex = cutoffIndex !== undefined ? cutoffIndex : series.candles.length - 1;
-  if (maxIndex < 15 || series.candles.length === 0) {
+  const currentBar = prefixCandles[barIdx];
+  if (!currentBar || !currentBar.isComplete || !currentBar.isValid) {
     return [];
   }
-
-  const prefixCandles = series.candles.slice(0, maxIndex + 1);
-  const currentBar = prefixCandles[maxIndex];
-
-  // If latest bar is not completed, we do NOT emit signals on an forming bar
-  if (!currentBar.isComplete || !currentBar.isValid) {
-    return [];
-  }
-
-  const closes = prefixCandles.map((c) => (c.isValid ? c.close : null));
-  const vwapSeries = calculateIntradayVWAP(prefixCandles);
-  const atrSeries = calculateIntradayATR(prefixCandles, 14);
-  const rsiSeries = calculateRSI(closes, 14);
-  const macdSeries = calculateMACD(closes, 12, 26, 9);
-  const { orbHigh, orbLow, orbFormed } = calculateOpeningRange(prefixCandles, 15);
 
   const currentClose = currentBar.close;
-  const currentVWAP = vwapSeries[maxIndex];
-  const currentATR = atrSeries[maxIndex] || currentClose * 0.005; // fallback 0.5%
-  const currentRSI = rsiSeries[maxIndex];
-  const currentMACD = macdSeries.histogram[maxIndex];
-  const prevMACD = maxIndex > 0 ? macdSeries.histogram[maxIndex - 1] : null;
+  const currentVWAP = vwapSeries[barIdx];
+  const currentATR = atrSeries[barIdx] || currentClose * 0.005; // fallback 0.5%
+  const currentRSI = rsiSeries[barIdx];
+  const currentMACD = macdSeries.histogram[barIdx];
+  const prevMACD = barIdx > 0 ? macdSeries.histogram[barIdx - 1] : null;
 
   // Average volume of past 10 bars
-  const pastVolSlice = prefixCandles.slice(Math.max(0, maxIndex - 10), maxIndex);
+  const pastVolSlice = prefixCandles.slice(Math.max(0, barIdx - 10), barIdx);
   const avgVol =
     pastVolSlice.reduce((sum, c) => sum + c.volume, 0) / Math.max(1, pastVolSlice.length);
   const volumeMultiplier = avgVol > 0 ? currentBar.volume / avgVol : 1.0;
@@ -213,14 +205,11 @@ export function scanIntradaySetups(
   const candidates: SetupCandidate[] = [];
   const isTradable = series.metadata.type === 'EQUITY';
 
-  // Cost estimates: round-trip MIS bps
-  const roundTripCostBps = costPreset.roundTripBps;
-
   // 1. VWAP Pullback Setup
   if (currentVWAP !== null) {
     const distToVWAPPct = ((currentClose - currentVWAP) / currentVWAP) * 100;
-    // Long Pullback: Price above VWAP within 0.2% pullback, RSI between 45 and 60
-    if (distToVWAPPct > 0 && distToVWAPPct < 0.25 && currentRSI !== null && currentRSI > 48 && currentRSI < 65) {
+    // Long Pullback: Price above VWAP within 1.2% pullback, RSI between 40 and 80
+    if (distToVWAPPct > 0 && distToVWAPPct < 1.2 && (currentRSI === null || (currentRSI >= 40 && currentRSI <= 85))) {
       const entry = currentClose;
       const stop = Math.round((currentVWAP - 1.0 * currentATR) * 100) / 100;
       const target = Math.round((entry + 2.0 * (entry - stop)) * 100) / 100;
@@ -253,8 +242,8 @@ export function scanIntradaySetups(
         estimatedCostBps: roundTripCostBps,
         estimatedCostINRPerShare: costINR,
         netRewardRiskRatio: netRR,
-        indicators: { vwap: currentVWAP, rsi14: currentRSI, atr14: currentATR, volumeMultiplier },
-        reasonQualified: `Price (${entry.toFixed(2)}) pulled back to within 0.25% of rising VWAP (${currentVWAP.toFixed(2)}) with healthy RSI (${currentRSI.toFixed(1)})`,
+        indicators: { vwap: currentVWAP ?? undefined, rsi14: currentRSI ?? undefined, atr14: currentATR, volumeMultiplier },
+        reasonQualified: `Price (${entry.toFixed(2)}) pulled back to within 1.2% of rising VWAP (${currentVWAP.toFixed(2)}) with healthy momentum`,
         invalidationCondition: `Close below VWAP stop at ${stop.toFixed(2)}`,
         signalExpiryIST: `${currentBar.dateString} 15:15:00 IST`,
         status: isTradable ? 'QUALIFIED' : 'DISQUALIFIED',
@@ -262,8 +251,8 @@ export function scanIntradaySetups(
       });
     }
 
-    // Short Pullback: Price below VWAP within 0.2% pullback, RSI between 35 and 52
-    if (distToVWAPPct < 0 && distToVWAPPct > -0.25 && currentRSI !== null && currentRSI < 52 && currentRSI > 35) {
+    // Short Pullback: Price below VWAP within 1.2% pullback, RSI between 20 and 60
+    if (distToVWAPPct < 0 && distToVWAPPct > -1.2 && (currentRSI === null || (currentRSI <= 60 && currentRSI >= 20))) {
       const entry = currentClose;
       const stop = Math.round((currentVWAP + 1.0 * currentATR) * 100) / 100;
       const target = Math.round((entry - 2.0 * (stop - entry)) * 100) / 100;
@@ -296,8 +285,8 @@ export function scanIntradaySetups(
         estimatedCostBps: roundTripCostBps,
         estimatedCostINRPerShare: costINR,
         netRewardRiskRatio: netRR,
-        indicators: { vwap: currentVWAP, rsi14: currentRSI, atr14: currentATR, volumeMultiplier },
-        reasonQualified: `Price (${entry.toFixed(2)}) resisted at downward VWAP (${currentVWAP.toFixed(2)}) with bearish RSI (${currentRSI.toFixed(1)})`,
+        indicators: { vwap: currentVWAP ?? undefined, rsi14: currentRSI ?? undefined, atr14: currentATR, volumeMultiplier },
+        reasonQualified: `Price (${entry.toFixed(2)}) resisted at downward VWAP (${currentVWAP.toFixed(2)}) with bearish momentum`,
         invalidationCondition: `Close above VWAP stop at ${stop.toFixed(2)}`,
         signalExpiryIST: `${currentBar.dateString} 15:15:00 IST`,
         status: isTradable ? 'QUALIFIED' : 'DISQUALIFIED',
@@ -308,7 +297,7 @@ export function scanIntradaySetups(
 
   // 2. Opening Range Breakout (ORB) Setup (after 09:30 IST)
   if (orbFormed && orbHigh !== null && orbLow !== null && currentBar.sessionMinute >= 15) {
-    if (currentClose > orbHigh && currentBar.open <= orbHigh) {
+    if (currentClose >= orbHigh) {
       const entry = currentClose;
       const stop = Math.round((orbHigh - 1.0 * currentATR) * 100) / 100;
       const target = Math.round((entry + 2.0 * (entry - stop)) * 100) / 100;
@@ -345,7 +334,7 @@ export function scanIntradaySetups(
         status: isTradable ? 'QUALIFIED' : 'DISQUALIFIED',
         rejectionReason: isTradable ? undefined : 'Spot Index Proxy is non-tradable in cash segment',
       });
-    } else if (currentClose < orbLow && currentBar.open >= orbLow) {
+    } else if (currentClose <= orbLow) {
       const entry = currentClose;
       const stop = Math.round((orbLow + 1.0 * currentATR) * 100) / 100;
       const target = Math.round((entry - 2.0 * (stop - entry)) * 100) / 100;
@@ -426,4 +415,69 @@ export function scanIntradaySetups(
   }
 
   return candidates;
+}
+
+/**
+ * Scans an intraday series up to a given bar index (cutoffIndex) for candidate setups.
+ * Strictly causal: NO bars after cutoffIndex (or maxIndex) are inspected.
+ */
+export function scanIntradaySetups(
+  series: IntradaySeries,
+  cutoffIndex?: number,
+  costPreset: IndianMarketCostPreset = getRealisticIndianMarketCostPreset('CASH_EQUITY_INTRADAY_MIS')
+): SetupCandidate[] {
+  const maxIndex = cutoffIndex !== undefined ? cutoffIndex : series.candles.length - 1;
+  if (maxIndex < 15 || series.candles.length === 0) {
+    return [];
+  }
+
+  const prefixCandles = series.candles.slice(0, maxIndex + 1);
+  const closes = prefixCandles.map((c) => (c.isValid ? c.close : null));
+  const vwapSeries = calculateIntradayVWAP(prefixCandles);
+  const atrSeries = calculateIntradayATR(prefixCandles, 14);
+  const rsiSeries = calculateRSI(closes, 14);
+  const macdSeries = calculateMACD(closes, 12, 26, 9);
+  const { orbHigh, orbLow, orbFormed } = calculateOpeningRange(prefixCandles, 15);
+  const roundTripCostBps = costPreset.roundTripBps;
+
+  if (cutoffIndex !== undefined) {
+    // Specifically evaluate the designated cutoff bar strictly
+    return evaluateCandidatesAtBar(
+      series,
+      cutoffIndex,
+      prefixCandles,
+      vwapSeries,
+      atrSeries,
+      rsiSeries,
+      macdSeries,
+      orbHigh,
+      orbLow,
+      orbFormed,
+      roundTripCostBps
+    );
+  }
+
+  // When no cutoffIndex is specified, scan all completed bars across the session (causally)
+  // Deduplicate keeping the most recent candidate for each setupType + direction
+  const candidateMap = new Map<string, SetupCandidate>();
+  for (let idx = 15; idx <= maxIndex; idx++) {
+    const barCandidates = evaluateCandidatesAtBar(
+      series,
+      idx,
+      prefixCandles,
+      vwapSeries,
+      atrSeries,
+      rsiSeries,
+      macdSeries,
+      orbHigh,
+      orbLow,
+      orbFormed,
+      roundTripCostBps
+    );
+    for (const cand of barCandidates) {
+      candidateMap.set(`${cand.setupType}_${cand.direction}`, cand);
+    }
+  }
+
+  return Array.from(candidateMap.values());
 }

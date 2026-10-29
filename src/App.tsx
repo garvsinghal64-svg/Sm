@@ -30,6 +30,7 @@ import {
   Radar,
   Wallet,
   Brain,
+  Newspaper,
 } from 'lucide-react';
 import {
   getCurrentISTDate,
@@ -52,6 +53,12 @@ import { WatchlistManager } from './components/WatchlistManager.tsx';
 import { IntradayScannerView } from './components/IntradayScannerView.tsx';
 import { PaperTradingView } from './components/PaperTradingView.tsx';
 import { MLBenchmarkView } from './components/MLBenchmarkView.tsx';
+import { GlobalMarketContextView } from './components/GlobalMarketContextView.tsx';
+import { MarketNewsView } from './components/MarketNewsView.tsx';
+import { MarketUniverseManager, DEFAULT_NSE_UNIVERSE } from './services/marketUniverse.ts';
+import { createDeterministicMacroFixture, assessMacroRegime } from './services/globalMarketData.ts';
+import { classifyFinancialSentiment, createDeterministicNewsFixture } from './services/newsService.ts';
+import { calculateCandidateScore, rankIntradayOpportunities } from './utils/opportunityRanker.ts';
 import {
   calculateSMA,
   calculateRSI,
@@ -120,6 +127,8 @@ export default function App() {
     | 'chart'
     | 'watchlist'
     | 'scanner'
+    | 'macro'
+    | 'news'
     | 'paper'
     | 'ml'
     | 'live'
@@ -1341,6 +1350,138 @@ export default function App() {
         actual: `ModelsEvaluated: ${mlResult56.metrics.length}, GatePassed: ${mlResult56.anyModelPassedGate}, Verdict: ${mlResult56.deploymentSummary.slice(0, 35)}...`,
         details: 'Evaluates Ridge, Logistic, and Decision Tree on walk-forward partitions against baselines; enforces non-negotiable deployment gate (Wilson lower bound > 50% and net return > 0%).',
       });
+
+      // 57. Smart Decision Engine: Market Universe Discovery & Management
+      const mgr57 = new MarketUniverseManager([...DEFAULT_NSE_UNIVERSE]);
+      const addRes57 = mgr57.addSymbol('bajaj-auto');
+      const dupRes57 = mgr57.addSymbol('BAJAJ-AUTO.NS');
+      const tradable57 = mgr57.getTradableEquities();
+      const indices57 = mgr57.getContextIndices();
+      const passed57 =
+        mgr57.getAllInstruments().length >= 24 &&
+        addRes57.success === true &&
+        addRes57.instrument?.symbol === 'BAJAJ-AUTO.NS' &&
+        dupRes57.success === false &&
+        tradable57.every((i) => i.type === 'EQUITY') &&
+        indices57.every((i) => i.type === 'INDEX');
+      results.push({
+        id: 'T57',
+        name: 'Decision Engine Universe: Liquid Blue Chips, Custom Symbols & Tradability Tagging',
+        category: 'Decision Engine Universe',
+        passed: passed57,
+        expected: 'Universe >= 24, auto-appends .NS, prevents duplicates, tags spot indices as non-tradable',
+        actual: `TotalInstruments: ${mgr57.getAllInstruments().length}, AutoSuffix: ${addRes57.instrument?.symbol}, DupRejected: ${!dupRes57.success}, TradableEquities: ${tradable57.length}`,
+        details: 'Manages liquid NSE universe with custom additions, format validation, and clear separation between equities and non-tradable index proxies.',
+      });
+
+      // 58. Smart Decision Engine: Global Macro Context & Sector Transmission Mechanisms
+      const macro58 = createDeterministicMacroFixture();
+      const regime58 = assessMacroRegime(macro58);
+      const crude58 = macro58.find((i) => i.symbol === 'CL=F');
+      const inr58 = macro58.find((i) => i.symbol === 'INR=X');
+      const passed58 =
+        macro58.length === 9 &&
+        crude58 !== undefined &&
+        crude58.latestPrice !== null &&
+        crude58.affectedSectors.length > 0 &&
+        inr58 !== undefined &&
+        inr58.latestPrice !== null &&
+        inr58.transmissionMechanism.length > 20 &&
+        typeof regime58.overallRegime === 'string';
+      results.push({
+        id: 'T58',
+        name: 'Decision Engine Macro: Commodities, Currencies, World Indices & Sector Transmission',
+        category: 'Macro & Global Markets',
+        passed: passed58,
+        expected: '9 macro instruments, Crude oil/USD-INR non-zero, sector transmission documented, regime assessed',
+        actual: `Instruments: ${macro58.length}, Crude: $${crude58?.latestPrice}/bbl, USD/INR: ₹${inr58?.latestPrice}, Regime: ${regime58.overallRegime}`,
+        details: 'Tracks Crude Oil, Gold, Silver, USD/INR, and World Indices with conditional economic transmission mechanisms to Indian sectors.',
+      });
+
+      // 59. Smart Decision Engine: News Intelligence & Rule-Based Financial Sentiment
+      const bullish59 = classifyFinancialSentiment('Tata Motors profit surges 45% as JLR revenue jumps');
+      const bearish59 = classifyFinancialSentiment('Adani Enterprises shares plunge 6% after SEBI issues notice');
+      const newsFixture59 = createDeterministicNewsFixture();
+      const passed59 =
+        bullish59.sentiment === 'BULLISH' &&
+        bullish59.evidence.length >= 2 &&
+        bearish59.sentiment === 'BEARISH' &&
+        bearish59.evidence.length >= 1 &&
+        newsFixture59.length >= 5 &&
+        newsFixture59.every((n) => n.isVerified);
+      results.push({
+        id: 'T59',
+        name: 'Decision Engine News: Verified RSS Intelligence & Transparent Keyword Sentiment',
+        category: 'News & Intelligence',
+        passed: passed59,
+        expected: 'Bullish/Bearish classified with explicit keyword evidence, zero AI hallucinations',
+        actual: `BullishScore: +${bullish59.score.toFixed(2)} (${bullish59.evidence[0]}), BearishScore: ${bearish59.score.toFixed(2)} (${bearish59.evidence[0]})`,
+        details: 'Evaluates company announcements with declared keyword evidence and zero hallucination risk.',
+      });
+
+      // 60. Smart Decision Engine: Cross-Sectional Opportunity Scoring (0 to 100)
+      const cand60 = setups54.find((s) => s.isTradableCashEquity) || setups54[0];
+      const score60 = calculateCandidateScore(cand60, regime58, newsFixture59);
+      const passed60 =
+        score60.totalScore >= 0 &&
+        score60.totalScore <= 100 &&
+        score60.setupQualityScore >= 0 &&
+        score60.trendAlignmentScore >= 0 &&
+        score60.volumeConfirmationScore >= 0 &&
+        score60.scoringNotes.length > 0;
+      results.push({
+        id: 'T60',
+        name: 'Decision Engine Ranker: 6-Factor Cross-Sectional Scoring System (0-100 Pts)',
+        category: 'Opportunity Ranking',
+        passed: passed60,
+        expected: 'Transparent composite score across Setup, Trend, Volume, Momentum, Regime, and News',
+        actual: `TotalScore: ${score60.totalScore}/100, Setup: ${score60.setupQualityScore}, Trend: ${score60.trendAlignmentScore}, Vol: ${score60.volumeConfirmationScore}`,
+        details: 'Ranks candidate setups using objective multi-factor scoring before evaluating trade viability.',
+      });
+
+      // 61. Smart Decision Engine: Actionable Trade Plan & Statutory MIS Costs
+      const rankResult61 = rankIntradayOpportunities([cand60], {
+        accountEquityINR: 100000,
+        availableCashINR: 100000,
+        isMarketOpen: true,
+        regime: regime58,
+        newsItems: newsFixture59,
+      });
+      const plan61 = rankResult61.topOpportunity?.tradePlan;
+      const passed61 =
+        plan61 !== undefined &&
+        plan61.calculatedQuantity > 0 &&
+        plan61.requiredMarginINR > 0 &&
+        plan61.statutoryFeeBreakdownINR.totalStatutoryChargesINR > 0 &&
+        plan61.exitRules.mandatorySquareOffIST.includes('15:15:00 IST');
+      results.push({
+        id: 'T61',
+        name: 'Decision Engine Trade Plan: Entry Triggers, Sizing, Statutory MIS Costs & Square-Off',
+        category: 'Trade Plan Execution',
+        passed: passed61,
+        expected: 'Complete trade plan with entry, stop loss, 2 targets, SEBI 5x margin, and 15:15 square-off',
+        actual: `PlanSymbol: ${plan61?.symbol}, Qty: ${plan61?.calculatedQuantity}, Margin: ₹${plan61?.requiredMarginINR}, TotalFees: ₹${plan61?.statutoryFeeBreakdownINR.totalStatutoryChargesINR}`,
+        details: 'Generates comprehensive trade plans only when strategy rules and statutory risk limits are satisfied.',
+      });
+
+      // 62. Smart Decision Engine: Non-Negotiable NO_TRADE Gate Enforcement
+      const closedMarketDecision62 = rankIntradayOpportunities([cand60], {
+        accountEquityINR: 100000,
+        isMarketOpen: false, // market closed
+      });
+      const passed62 =
+        closedMarketDecision62.verdict === 'NO_TRADE' &&
+        closedMarketDecision62.topOpportunity === null &&
+        closedMarketDecision62.reasonsToAvoidTrading.length > 0;
+      results.push({
+        id: 'T62',
+        name: 'Decision Engine Guardrail: Non-Negotiable NO_TRADE Gate Enforcement',
+        category: 'Capital Preservation Gate',
+        passed: passed62,
+        expected: 'Emits NO_TRADE when market is closed or qualification criteria are unmet; never forces recommendations',
+        actual: `Verdict: ${closedMarketDecision62.verdict}, TopOpportunity: ${closedMarketDecision62.topOpportunity}, ReasonsCount: ${closedMarketDecision62.reasonsToAvoidTrading.length}`,
+        details: 'Protects capital by strictly emitting NO TRADE when data is stale, market is closed, or setup fails the 65-point gate.',
+      });
     } catch (err: any) {
       console.error(err);
     }
@@ -1524,6 +1665,36 @@ export default function App() {
             <span>Intraday Scanner</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
               Stage 4E
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('macro')}
+            className={`px-4 py-2.5 font-medium border-b-2 flex items-center gap-2 transition whitespace-nowrap ${
+              activeTab === 'macro'
+                ? 'border-blue-400 text-blue-400 bg-slate-800/40'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+            }`}
+          >
+            <Globe className="w-4 h-4 text-blue-400" />
+            <span>Macro & Global</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+              Commodities
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('news')}
+            className={`px-4 py-2.5 font-medium border-b-2 flex items-center gap-2 transition whitespace-nowrap ${
+              activeTab === 'news'
+                ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+            }`}
+          >
+            <Newspaper className="w-4 h-4 text-cyan-400" />
+            <span>Market News</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+              Verified RSS
             </span>
           </button>
 
@@ -1724,6 +1895,12 @@ export default function App() {
             }}
           />
         )}
+
+        {/* SMART DECISION ENGINE: GLOBAL MACRO CONTEXT & COMMODITIES */}
+        {activeTab === 'macro' && <GlobalMarketContextView />}
+
+        {/* SMART DECISION ENGINE: VERIFIED FINANCIAL NEWS & ANNOUNCEMENTS */}
+        {activeTab === 'news' && <MarketNewsView />}
 
         {/* STAGE 4F: REALISTIC PAPER TRADING & REPLAY */}
         {activeTab === 'paper' && (
