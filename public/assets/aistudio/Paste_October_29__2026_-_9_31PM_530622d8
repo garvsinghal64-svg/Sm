@@ -1,0 +1,771 @@
+MASTER PROMPT — INTEGRATED INDIAN STOCK MARKET PLATFORM
+
+Complete Stages 4D–4G: Intraday Data + Setup Scanner + Risk Management + Paper Trading + Alerts + ML Benchmarking
+
+ROLE: Act as a principal quantitative developer, senior TypeScript/React engineer, market-data engineer, backtesting specialist, and independent software verification engineer.
+
+MISSION: Upgrade my existing Indian Stock Market Platform into a complete, reliable, ₹0-budget research and intraday paper-trading system by integrating all of the following into one coordinated implementation:
+
+1. Intraday market-data infrastructure and validation.
+2. Intraday setup scanner and signal generation.
+3. Indian-market risk management and position sizing.
+4. Realistic paper trading and historical replay.
+5. Alerts and trade monitoring.
+6. Machine-learning benchmarking and leakage-free evaluation.
+7. End-to-end testing, security review, documentation, and final production build.
+
+Do not stop after writing a plan. Inspect the existing repository, implement the required changes, run the available verification commands, fix discovered defects, and provide a final evidence-based audit report.
+
+---
+
+1. NON-NEGOTIABLE PROJECT RULES
+
+1.1 Preserve and extend the existing project
+
+This is an existing, substantially developed application—not a greenfield project.
+
+Before editing anything:
+
+- Inspect the complete repository structure and current Git/diff state, if available.
+- Read "package.json", TypeScript configuration, server configuration, environment examples, data providers, date engine, holiday calendars, indicators, historical-data services, prediction research engine, execution accounting, transaction-cost calculations, tests, and UI components.
+- Inspect the current implementations of:
+  - "src/services/historicalData.ts"
+  - "src/services/marketDataProvider.ts"
+  - "src/utils/dateEngine.ts"
+  - "src/utils/indicators.ts"
+  - "src/utils/dataLeakageAudit.ts"
+  - "src/utils/predictionResearch.ts"
+  - "src/App.tsx"
+  - Existing associated tests and integration tests.
+- Check the current state of the previous Stage 4B and Stage 4C work before making changes.
+- Identify existing functionality, incomplete functionality, defects, and missing functionality separately.
+- Inspect any current uncommitted edits. Do not discard or overwrite them blindly.
+- Reuse existing abstractions and tests whenever appropriate.
+- Do not create duplicate services, indicators, transaction-cost engines, simulators, or model pipelines when equivalent functionality already exists.
+- Do not replace the existing architecture simply because a new implementation is easier to write.
+- Do not delete working features, UI screens, supported instruments, historical research tools, holiday logic, or safety checks.
+- Keep the current React, TypeScript, Vite, Express, and project conventions unless a demonstrated technical problem requires a minimal change.
+
+The existing code is the source of truth. If this prompt conflicts with an established working implementation, inspect the implementation, explain the conflict, and make the smallest correct change.
+
+1.2 Zero-budget requirements
+
+The project must remain usable without paid market-data subscriptions, paid APIs, credit-card registration, or proprietary model hosting.
+
+- Prefer existing data providers and free/open-source alternatives.
+- Never silently introduce a paid dependency or service.
+- No paid API is mandatory for core functionality.
+- Keep API keys on the server, never in browser bundles.
+- Do not expose secrets in logs, responses, screenshots, or source files.
+- Clearly document free-provider limitations, rate limits, delays, reliability, and licensing.
+- If a free source cannot provide genuine live or intraday data, show that limitation honestly. Do not manufacture real-time data to make the interface look complete.
+
+Do not add a new dependency unless it is necessary, compatible, and justified. Prefer the current toolchain and existing libraries.
+
+1.3 Supported instruments
+
+Preserve and test the existing seven instruments:
+
+- "^NSEI"
+- "^NSEBANK"
+- "^BSESN"
+- "RELIANCE.NS"
+- "TCS.NS"
+- "INFY.NS"
+- "HDFCBANK.NS"
+
+Maintain correct instrument metadata and distinguish:
+
+- Tradable cash-equity symbols.
+- Non-tradable spot-index proxies.
+- Any future tradable instrument or derivative support.
+
+Do not treat a spot index as a directly tradable security. Do not introduce futures or options execution assumptions unless their contract specifications, expiry, lot sizes, costs, and rollover mechanics are explicitly implemented and tested.
+
+1.4 No false completion claims
+
+Never report a test, build, integration check, market-data request, model training run, or backtest as successful unless it was actually executed and its result was observed.
+
+If execution is unavailable, report the exact limitation and leave the relevant status unverified.
+
+Do not invent:
+
+- Test results.
+- Historical candles.
+- Live market prices.
+- Data-source confirmations.
+- Model metrics.
+- Profitable strategies.
+- API responses.
+- Exchange-calendar verification.
+- Completed file edits.
+
+Do not optimize parameters to manufacture attractive backtest results. Do not claim that the platform predicts the market reliably or guarantees profit.
+
+---
+
+2. EXISTING STAGE 4C BASELINE
+
+The previous Stage 4C audit report states that the project includes:
+
+- Indian transaction-cost breakdowns and rate classifications.
+- Side-specific MIS and CNC costs.
+- Turnover-unit definitions.
+- Multi-mode execution and return accounting.
+- Walk-forward and holdout evaluation.
+- Horizon purging and leakage checks.
+- Baseline comparisons and statistical uncertainty estimates.
+- A time-travel simulator and in-app verification suite.
+
+The report states that 89 unit tests, 4 integration suites, 52 in-app checks, TypeScript analysis, and production compilation passed at that time.
+
+Treat these as previously reported results, not automatically verified current results. Inspect the code and rerun available checks after implementation.
+
+Preserve the existing transaction-cost and execution-accounting work unless tests reveal a specific defect. In particular, inspect the actual implementation and confirm that the following are correctly handled:
+
+- Brokerage caps and configurable broker assumptions.
+- STT, stamp duty, exchange charges, SEBI fees, GST, and applicable DP charges.
+- BUY/SELL asymmetry.
+- Order-level versus turnover-based costs.
+- Position reversals, partial rebalances, entries, exits, and terminal liquidation.
+- Slippage assumptions and their provenance.
+- Spot-index proxy disclosures.
+- Overnight gaps and execution timing.
+- Return compounding and turnover accounting.
+- Holdout isolation and preprocessing fitted only on training data.
+
+Do not simply trust the audit report. Verify the actual code and tests.
+
+Important: statutory rates, broker schedules, exchange charges, and effective dates can change. Validate legal and exchange-sensitive assumptions against authoritative current sources when browsing is available. If verification is not possible, label the rates and their effective dates as unverified/configurable rather than calling them current or officially verified.
+
+---
+
+3. STAGE 4D — INTRADAY DATA INFRASTRUCTURE
+
+3.1 Extend the current data architecture
+
+Inspect the current daily-only historical-data interfaces and extend them minimally to support intraday bars where the data source genuinely permits it.
+
+Potential intervals include:
+
+- 1 minute.
+- 5 minutes.
+- 15 minutes.
+- 30 minutes.
+- 60 minutes.
+- 1 day.
+
+Only expose intervals the configured provider actually supports. Do not fabricate missing intervals or imply that resampled bars have the same fidelity as original bars.
+
+Implement or extend:
+
+- Typed interval and timeframe definitions.
+- Provider capability metadata.
+- Symbol validation.
+- Request-range validation.
+- Data normalization.
+- Timestamp normalization.
+- Duplicate-bar handling.
+- Out-of-order bar detection.
+- Missing-bar and incomplete-bar detection.
+- OHLC consistency validation.
+- Volume validation.
+- Corporate-action and adjusted-price handling appropriate to the instrument.
+- Request throttling and safe retries.
+- Timeout and error handling.
+- Cache behavior with explicit freshness metadata.
+- Source attribution and provenance.
+- Clear unavailable/stale/partial-data states.
+
+Keep historical daily research compatible with existing behavior.
+
+3.2 IST and exchange-session correctness
+
+Use "Asia/Kolkata" explicitly for market-session interpretation.
+
+- Avoid hardcoded UTC offsets as a replacement for timezone-aware logic.
+- Reuse the existing date engine and holiday calendar.
+- Correctly handle weekends, exchange holidays, special sessions, and early closes where supported by verified data.
+- Do not assume every weekday is a normal trading session.
+- Distinguish the candle's start time, end time, and availability time.
+- Prevent incomplete current candles from being treated as completed observations.
+- Prevent future timestamps and future candles from entering signals or backtests.
+- Ensure the date engine does not freeze to a build-time date.
+- Preserve the existing simulated-date/time functionality where it is useful for replay and tests.
+
+Do not invent special-session schedules. Unverified calendar dates must be visibly marked and handled according to the existing exclusion policy.
+
+3.3 Data freshness and failure states
+
+Each market-data result should carry enough metadata to determine:
+
+- Source/provider.
+- Symbol.
+- Interval.
+- Last bar timestamp.
+- Fetch time.
+- Whether the latest bar is complete.
+- Whether the data is live, delayed, historical, cached, partial, or unavailable.
+- Any relevant provider error.
+
+The UI must display the true data state.
+
+If a provider fails:
+
+- Show a clear error or unavailable-data state.
+- Do not silently substitute stale cached prices as current prices.
+- Do not silently substitute sample candles as real market data.
+- Never use synthetic data for live signals or performance claims.
+- If a demo fixture is intentionally displayed, label it clearly as demo/test data.
+
+3.4 Stage 4D tests
+
+Add deterministic tests for:
+
+- Interval validation.
+- IST conversion.
+- Exchange sessions and holidays.
+- Incomplete candles.
+- Duplicate and out-of-order bars.
+- Missing candles.
+- Stale-data detection.
+- Invalid OHLC values.
+- Provider failure and timeout behavior.
+- Cache freshness.
+- Symbol metadata.
+- Daily compatibility.
+- No-lookahead guarantees.
+
+Use mocked fixtures for deterministic tests. Keep live-provider integration tests separate and clearly identify network-dependent tests.
+
+Stage 4D gate: no false live-data claims, correct timestamps and session handling, preserved daily functionality, and passing deterministic data-validation tests.
+
+---
+
+4. STAGE 4E — INTRADAY SCANNER AND RISK MANAGEMENT
+
+4.1 Build a modular scanner using existing indicators
+
+Audit existing indicator and charting code before adding new calculations.
+
+Implement only missing capabilities for the following candidate setups, where suitable intraday data is available:
+
+1. VWAP trend/pullback.
+2. Opening-range breakout.
+3. RSI momentum or divergence.
+4. MACD crossover or momentum confirmation.
+5. ATR-based volatility and risk sizing.
+6. Volume confirmation, where trustworthy volume data is available.
+7. Optional trend filters using existing moving averages.
+
+Each setup must be independently testable and configurable.
+
+Do not combine every indicator into an arbitrary score without justification. Avoid duplicate or highly correlated indicators being counted as independent evidence.
+
+For each generated candidate, record:
+
+- Instrument.
+- Timeframe.
+- Signal timestamp.
+- Data-source status.
+- Setup name and direction.
+- Entry trigger or entry assumption.
+- Stop-loss and target assumptions.
+- Risk/reward ratio.
+- Relevant indicator values.
+- Confirmation and invalidation conditions.
+- Signal expiry.
+- Estimated trading costs.
+- Estimated net reward/risk.
+- Reason the setup qualified.
+- Reason the setup was rejected, when applicable.
+
+Signals must be reproducible from the same input data and configuration.
+
+4.2 Lookahead and repainting prevention
+
+- A signal can only use completed candles available at the signal timestamp unless the system explicitly models intrabar information.
+- Do not use the day's final high, low, close, or volume to generate an earlier intraday signal.
+- Calculate opening-range levels only after the chosen opening-range window is complete.
+- Calculate VWAP from available session data only.
+- Do not calculate indicators using future bars.
+- Handle warm-up periods without fabricating values.
+- Clearly define when an alert is emitted and when a simulated order can fill.
+- Avoid double-counting the same signal across repeated refreshes.
+- Make signal expiry and invalidation explicit.
+
+4.3 Position sizing and risk controls
+
+Implement or extend a reusable risk engine that calculates:
+
+- Account equity and available virtual cash.
+- Maximum allowed risk per trade.
+- Risk budget in INR.
+- Entry-to-stop distance.
+- Quantity based on stop distance and risk budget.
+- Maximum position value.
+- Available-cash constraint.
+- Expected costs and slippage.
+- Estimated net loss at stop.
+- Estimated net reward at target.
+- Reward/risk after costs.
+- Daily loss limits.
+- Maximum concurrent positions.
+- Maximum exposure per instrument.
+- Optional cooldown after consecutive losses.
+- Trading-session restrictions.
+
+Make all risk limits configurable. Provide sensible conservative defaults, but clearly label them as configurable risk policies rather than empirically optimal values.
+
+Reject trades that violate limits. Explain the rejection.
+
+Handle gaps, slippage, price limits, and stop-loss fills realistically enough for a research simulator. A stop price is not a guarantee of execution at that exact price.
+
+Stage 4E gate: deterministic signals, no lookahead, transparent costs, correct risk sizing, and explainable rejection behavior.
+
+---
+
+5. STAGE 4F — PAPER TRADING, REPLAY, AND ALERTS
+
+5.1 Paper-trading engine
+
+Build on the existing simulator and execution-accounting architecture rather than creating a duplicate engine.
+
+Support, as appropriate to the existing design:
+
+- Virtual account creation/reset.
+- Initial virtual capital.
+- Cash and position tracking.
+- Long positions and flat/cash transitions.
+- Short positions only when the selected instrument and explicitly defined simulation rules permit them.
+- Market orders and limit orders.
+- Stop-loss and target orders.
+- Partial fills only if properly modeled.
+- Order status and rejection reasons.
+- Entry/exit timestamps and prices.
+- Quantity and notional.
+- Gross and net P&L.
+- All applicable costs.
+- Slippage assumptions.
+- Realized and unrealized P&L.
+- Equity curve.
+- Drawdown.
+- Turnover.
+- Win/loss statistics.
+- Trade journal and event history.
+- Maximum daily loss.
+- End-of-session position handling.
+- Reset and replay behavior.
+
+Never send real brokerage orders. The paper-trading system must not accidentally become a live-trading system.
+
+5.2 Execution semantics
+
+Explicitly define and test:
+
+- Signal-generation time.
+- Earliest eligible execution time.
+- Market-order fill assumptions.
+- Limit-order touch versus actual fill assumptions.
+- Gap-through-stop behavior.
+- Stop-loss and target collisions within a candle.
+- What happens when OHLC data cannot establish which event occurred first.
+- Overnight positions and gaps.
+- Session-end liquidation policy.
+- Reversal turnover and cost accounting.
+- Terminal liquidation.
+- Insufficient cash and risk-limit rejections.
+
+When candle data cannot establish the sequence of events, use a documented conservative rule or mark the outcome ambiguous. Do not assume the favorable outcome.
+
+Reuse the existing Stage 4B/4C accounting implementation and expand its tests rather than rewriting it blindly.
+
+5.3 Historical replay
+
+Integrate the paper-trading engine with the existing time-travel simulator where possible.
+
+Allow replay through historical candles without exposing future bars to the scanner.
+
+Support:
+
+- Pause/resume and step-forward.
+- Simulated IST date/time.
+- Signal and order event timelines.
+- Account equity and positions over time.
+- Deterministic replay with fixed data and settings.
+- Replay reset.
+- A clear separation between historical replay, live/delayed data, and test fixtures.
+
+The replay must reproduce the same results when run with the same data, configuration, and execution assumptions.
+
+5.4 Alerts
+
+Implement useful alerting without requiring a paid service.
+
+Depending on existing architecture and platform support, include:
+
+- In-app signal notifications.
+- Entry/exit events.
+- Stop-loss and target events.
+- Data-stale warnings.
+- Provider failures.
+- Risk-limit breaches.
+- Daily loss-limit warnings.
+- End-of-session reminders, where appropriate.
+
+If browser notifications or background notifications require permission or platform support, request permission explicitly and document limitations.
+
+Prevent duplicate alerts using stable event identifiers or equivalent deduplication.
+
+Do not claim that alerts will run continuously in the background if the browser, server, or device does not support that behavior.
+
+Stage 4F gate: reproducible paper trades, realistic accounting, no duplicate events, effective risk limits, and no real-order execution.
+
+---
+
+6. STAGE 4G — MACHINE-LEARNING BENCHMARKING
+
+6.1 Benchmark before deploying
+
+The objective is to determine whether ML adds measurable out-of-sample value. It is not to force a profitable result.
+
+Inspect the current "predictionResearch.ts", baseline implementations, walk-forward splits, feature preprocessing, statistical metrics, and existing data-leakage audits before adding models.
+
+Preserve and benchmark the current baselines, including any implemented no-change, return-persistence, or rule-based baselines.
+
+Add only models compatible with the available runtime and ₹0 requirement. Candidate models may include:
+
+- Logistic regression for direction classification.
+- Ridge regression for return estimation.
+- A tree-based model such as a random forest or gradient-boosted trees, if an appropriate free implementation is feasible.
+- A simple volatility or regime baseline, if justified.
+
+Do not add a model merely because it appears in this list. Inspect dependency compatibility, bundle size, execution environment, and reproducibility first.
+
+Do not require a paid LLM or cloud ML service for training or inference.
+
+6.2 Targets and features
+
+Define targets precisely and align them with the intended use case.
+
+For intraday prediction, potential targets include:
+
+- Next completed bar return.
+- Direction of the next bar.
+- Return over a specified future interval.
+- Net return after modeled execution costs.
+
+Document the exact horizon and execution convention.
+
+Potential features include historical returns, volatility, volume-derived features, VWAP distance, RSI, MACD, moving averages, ATR, and time-of-session features when their data is available.
+
+All feature values must be computed from information available at prediction time.
+
+Do not mix daily and intraday observations without explicit temporal alignment.
+
+6.3 Leakage-free validation
+
+Use chronological walk-forward validation and preserve an untouched final holdout.
+
+- Fit scalers, imputers, feature selectors, and all preprocessing exclusively on each training partition.
+- Purge boundary observations according to the target horizon.
+- Apply embargoes if the target or feature construction requires them.
+- Prevent future returns from entering features.
+- Prevent future candles, final-day values, or future-derived normalization statistics from entering earlier predictions.
+- Do not use the final holdout to choose features, thresholds, models, or hyperparameters.
+- Keep baseline and ML predictions aligned on identical timestamps, targets, and execution assumptions.
+- Separate hyperparameter selection from final evaluation.
+- Record random seeds and deterministic settings.
+- Record dataset identity, feature configuration, model configuration, split boundaries, and run metadata.
+
+Add adversarial leakage tests designed to detect accidental future-information access.
+
+6.4 Evaluation metrics
+
+Report suitable metrics for each task, including as applicable:
+
+Prediction quality
+
+- MAE and RMSE for regression.
+- Directional accuracy with uncertainty intervals.
+- Precision, recall, F1, and calibration for classification.
+- Sample counts and class balance.
+
+Trading simulation
+
+- Gross and net returns.
+- Trading costs and turnover.
+- Maximum drawdown.
+- Sharpe ratio with documented annualization.
+- Uncertainty intervals that account for dependence where feasible.
+- Performance by instrument, timeframe, and market regime where sample sizes permit.
+- Sensitivity to slippage and transaction costs.
+- Comparison against simple baselines.
+
+Do not compare models using different test dates, cost assumptions, or execution rules.
+
+Do not treat a high directional-accuracy score as proof of profitability.
+
+6.5 Model deployment gate
+
+Only integrate a model into the user-facing scanner after the evaluation demonstrates that it adds robust out-of-sample value over a relevant baseline under realistic costs.
+
+The acceptance criteria must be declared before the final holdout is evaluated.
+
+If no model qualifies:
+
+- Keep the ML results in research mode.
+- Retain the simpler baseline.
+- Display that no model passed the deployment gate.
+- Do not hide negative results.
+- Do not tune against the final holdout to force a pass.
+
+A model's predictions must never bypass the risk engine or data-quality checks.
+
+Stage 4G gate: reproducible training/evaluation, no detected leakage, fair baseline comparison, transparent uncertainty, and deployment only if predeclared criteria are met.
+
+---
+
+7. INTEGRATION AND USER INTERFACE
+
+Integrate the new capabilities into the existing interface and navigation. Preserve current dashboard, chart, watchlist, live-data view, simulator, holidays, tests, and architecture screens wherever they already exist.
+
+Add or extend appropriate views for:
+
+- Intraday scanner.
+- Signal detail and explanation.
+- Risk and position-size calculator.
+- Paper account.
+- Orders and open positions.
+- Trade journal and equity curve.
+- Historical replay.
+- Alerts and event history.
+- ML research and model comparisons.
+- Data-source status and freshness.
+
+Use existing UI patterns and components. Do not redesign the entire app unnecessarily.
+
+The UI must clearly distinguish:
+
+- Live or delayed market data.
+- Historical data.
+- Cached data.
+- Demo/test data.
+- Research signals.
+- Paper orders.
+- ML research outputs.
+- Unavailable data or unsupported functionality.
+
+Every signal should have an explanation and show the timestamp, instrument, timeframe, and relevant data status.
+
+Do not use a green success indicator to imply that an unverified provider or untested model is working.
+
+Ensure responsive layout and usability on Android/mobile screens.
+
+---
+
+8. ARCHITECTURE, PERSISTENCE, AND SECURITY
+
+Inspect the current persistence layer and server before changing it.
+
+- Reuse existing storage and migration patterns.
+- Persist paper accounts, orders, trade events, settings, and alert-deduplication state when supported by the existing architecture.
+- Prevent malformed or stale state from corrupting the account.
+- Ensure reset behavior is explicit and tested.
+- Use versioned schema migrations if required.
+- Avoid unnecessary new databases or paid hosted services.
+- Validate all server inputs.
+- Keep secrets server-side.
+- Do not leak environment variables or private configuration through frontend code.
+- Add sensible request timeouts, rate limiting, and error handling where appropriate.
+- Avoid logging sensitive secrets.
+- Ensure the application degrades safely if an optional provider or model fails.
+
+Do not claim persistence survives restart unless that behavior has been tested in the actual deployment configuration.
+
+---
+
+9. COMPREHENSIVE TESTING AND AUDIT
+
+Add tests alongside each implementation rather than postponing all testing until the end.
+
+9.1 Unit tests
+
+Cover:
+
+- Market-data validation.
+- IST/session/holiday logic.
+- Intraday indicators.
+- Scanner signal timing.
+- No-lookahead behavior.
+- Position sizing.
+- Cost calculations.
+- Order state transitions.
+- Stop-loss/target logic.
+- Gap behavior.
+- Partial and terminal liquidation, where supported.
+- Paper-account cash and P&L.
+- Alert deduplication.
+- ML feature alignment.
+- Training-only preprocessing.
+- Walk-forward splits and purging.
+- Holdout isolation.
+- Reproducibility.
+- Failure handling.
+
+9.2 Integration tests
+
+Test:
+
+- Provider to normalized-data pipeline.
+- Data to scanner.
+- Scanner to risk engine.
+- Signal to paper order.
+- Order to fill and account ledger.
+- Ledger to P&L and metrics.
+- Replay to deterministic outcomes.
+- ML predictions to evaluation pipeline.
+- UI/server error handling.
+
+Use deterministic fixtures wherever possible.
+
+Keep network-dependent tests separate from ordinary unit tests. A network failure must not make a deterministic unit test appear to pass.
+
+9.3 Regression and property tests
+
+Preserve existing test coverage and add regression cases for all defects found.
+
+Where practical, use property-based or randomized invariant tests for:
+
+- Nonnegative quantities and valid order states.
+- Cash and position accounting consistency.
+- Turnover calculations.
+- Cost nonnegativity.
+- No duplicated fills.
+- No future-data access.
+- Deterministic replay.
+- Holdout isolation.
+- Risk-limit enforcement.
+
+Do not change a test simply to make incorrect code pass. If a test's expected result is wrong, independently derive the correct result and document why it changed.
+
+9.4 Run the actual project checks
+
+Inspect the package scripts, then run all relevant commands available in the environment, including as applicable:
+
+- Unit tests.
+- Integration tests.
+- TypeScript/static analysis.
+- Production build.
+- In-app verification tests.
+- Data-leakage audit.
+- Security checks.
+- Replay/accounting regression tests.
+
+Do not silently omit failed tests.
+
+Do not install unnecessary packages or alter lockfiles without justification. If dependencies cannot be installed or a command cannot run, report the exact reason and mark that check NOT VERIFIED.
+
+9.5 Final independent review
+
+After implementation, perform a separate review of the final code—not merely the same reasoning used while writing it.
+
+Search for:
+
+- Hardcoded sample prices entering real-data paths.
+- Stale data labeled as live.
+- Fabricated PMIDs or unsupported evidence claims if any research citations are shown.
+- API keys exposed to the browser.
+- Future data used in signals or ML.
+- Holdout contamination.
+- Unrealistic or missing trading costs.
+- Incorrect reversal and liquidation accounting.
+- Duplicate alerts or fills.
+- UI controls that do nothing.
+- Unhandled provider failures.
+- Misleading success indicators.
+- Unsupported claims about ML or profitability.
+
+Fix any confirmed defects and rerun the affected tests.
+
+---
+
+10. IMPLEMENTATION METHOD
+
+Work directly in the existing repository.
+
+Follow this process:
+
+1. Inspect: inventory files, existing features, changes, tests, and architecture.
+2. Establish baseline: run available checks before modifying code and record actual outcomes.
+3. Create a concise gap matrix: existing and verified, present but unverified, incomplete, defective, or missing.
+4. Implement Stage 4D: intraday data and validation.
+5. Verify Stage 4D: fix failures before building dependent features.
+6. Implement Stage 4E: scanner, signals, and risk management.
+7. Verify Stage 4E: no-lookahead and deterministic signal tests.
+8. Implement Stage 4F: paper trading, replay integration, and alerts.
+9. Verify Stage 4F: execution, costs, persistence, and replay tests.
+10. Implement Stage 4G: ML benchmarking and deployment gate.
+11. Verify Stage 4G: reproducibility, leakage, fair comparison, and holdout isolation.
+12. Integrate the UI: preserve existing screens and add only necessary components.
+13. Run regression tests: ensure existing daily research, date engine, holidays, charts, watchlist, transaction-cost logic, and Stage 4B/4C accounting remain functional.
+14. Conduct the final independent audit.
+15. Produce the final report with verified evidence and outstanding limitations.
+
+If the environment has execution or tool-call limits, continue in resumable checkpoints and maintain a clear record of completed work. Do not start over from scratch after interruption. Inspect the current files and diffs before resuming.
+
+Do not stop after step 3 and present the gap matrix as the completed task. Implement as much of the complete scope as the environment permits, then report exactly what remains.
+
+---
+
+11. ACCEPTANCE CRITERIA
+
+The project is complete only when all applicable criteria have been addressed and honestly classified:
+
+- [ ] Existing features preserved.
+- [ ] Intraday intervals supported only where genuinely available.
+- [ ] Correct IST/session/holiday handling.
+- [ ] Data freshness, provenance, and failure states visible.
+- [ ] No fake live data or silent stale-data substitution.
+- [ ] Intraday signals use only information available at signal time.
+- [ ] Scanner setups are modular, explainable, and reproducible.
+- [ ] Risk sizing includes stop distance, cash limits, and modeled costs.
+- [ ] Existing Indian cost accounting is reused and verified.
+- [ ] Paper orders, fills, cash, positions, and P&L are consistent.
+- [ ] Replay is deterministic and does not expose future bars.
+- [ ] Alerts are deduplicated and have honest platform limitations.
+- [ ] ML models are compared against existing baselines fairly.
+- [ ] Walk-forward and holdout boundaries remain isolated.
+- [ ] No confirmed lookahead or preprocessing leakage.
+- [ ] ML deployment is conditional on predeclared out-of-sample criteria.
+- [ ] No claim of profitability without credible supporting evidence.
+- [ ] Android/mobile UI remains usable.
+- [ ] Server-side secrets remain protected.
+- [ ] Unit tests, integration tests, static checks, and build are run where possible.
+- [ ] Existing regression suite remains intact.
+- [ ] Final independent audit is documented.
+
+A checklist item that cannot be verified must be marked NOT VERIFIED rather than checked off.
+
+---
+
+12. REQUIRED FINAL RESPONSE
+
+At the end, provide a concise but detailed implementation report with:
+
+1. Files inspected and changed.
+2. Existing functionality reused.
+3. New functionality actually implemented.
+4. Defects discovered and fixes applied.
+5. Tests actually executed and exact pass/fail counts.
+6. TypeScript and production-build outcomes.
+7. Data providers and their verified limitations.
+8. ML models trained, if any, and their actual out-of-sample results.
+9. Whether any model passed the predeclared deployment gate.
+10. Known limitations and anything still NOT VERIFIED.
+11. Exact commands to run the application and tests.
+12. Files or diffs available for review and a clear continuation point if any work remains.
+
+Separate facts verified by code or execution from assumptions and recommendations.
+
+Final instruction: Implement the complete integrated roadmap in the existing project. Preserve all working code, prioritize correctness over speed, use only zero-budget-compatible solutions, test every meaningful change, and never fabricate completion evidence. Do not ask me to choose between the stages. They are all part of the same final objective.

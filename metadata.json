@@ -1,0 +1,6 @@
+{
+  "name": "Indian Stock Market Date Engine",
+  "description": "Authoritative Asia/Kolkata IST date and trading session calculation engine for NSE/BSE stock markets with holiday rules and skip logic.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
