@@ -27,6 +27,7 @@ import { calculateCompliantPositionSize, PositionSizingResult, RiskManagementCon
 import { MacroRegimeAssessment } from '../services/globalMarketData.ts';
 import { VerifiedNewsItem } from '../services/newsService.ts';
 import { calculateIndianEquityTradeCostBreakdown } from './predictionResearch.ts';
+import { getMarketStatus } from './dateEngine.ts';
 
 export interface ScoreComponentBreakdown {
   setupQualityScore: number; // max 30
@@ -97,9 +98,12 @@ export interface DecisionEngineResult {
   verdict: 'STRONG_QUALIFIED_SETUP' | 'NO_TRADE';
   verdictReason: string;
   evaluationTimestampIST: string;
+  dataMode: 'LIVE_MARKET' | 'DEMO_FIXTURE';
+  isMarketOpen: boolean;
   totalCandidatesEvaluated: number;
   eligibleTradableCount: number;
   disqualifiedIndexProxyCount: number;
+  failedSymbolsCount: number;
   topOpportunity: RankedOpportunity | null;
   rankedOpportunities: RankedOpportunity[];
   reasonsToAvoidTrading: string[];
@@ -184,7 +188,7 @@ export function calculateCandidateScore(
 
   // 5. Macro Regime Synergy (0 to 10 pts)
   let regimeScore = 5;
-  if (regime) {
+  if (regime && regime.confidenceScorePct > 0) {
     if (regime.niftyTrend === 'UPTREND' && candidate.direction === 'LONG') {
       regimeScore = 10;
       notes.push('Nifty uptrend beta synergy (+10 pts)');
@@ -199,26 +203,38 @@ export function calculateCandidateScore(
       regimeScore = 5;
       notes.push('Neutral market regime (+5 pts)');
     }
+  } else {
+    regimeScore = 5;
+    notes.push('Macro data neutral / unavailable (+5 pts)');
   }
 
   // 6. News Catalyst Impact (0 to 10 pts)
   let newsScore = 5;
-  const relevantNews = newsItems.filter((n) => n.relevantSymbols.includes(candidate.symbol));
-  if (relevantNews.length > 0) {
-    const hasBullish = relevantNews.some((n) => n.sentiment === 'BULLISH');
-    const hasBearish = relevantNews.some((n) => n.sentiment === 'BEARISH');
-    if (candidate.direction === 'LONG' && hasBullish && !hasBearish) {
-      newsScore = 10;
-      notes.push('Verified bullish news catalyst (+10 pts)');
-    } else if (candidate.direction === 'SHORT' && hasBearish && !hasBullish) {
-      newsScore = 10;
-      notes.push('Verified bearish headline catalyst (+10 pts)');
-    } else if ((candidate.direction === 'LONG' && hasBearish) || (candidate.direction === 'SHORT' && hasBullish)) {
-      newsScore = 0;
-      notes.push('Conflicting news catalyst headwind (0 pts)');
+  if (newsItems && newsItems.length > 0) {
+    const relevantNews = newsItems.filter((n) => n.relevantSymbols.includes(candidate.symbol));
+    if (relevantNews.length > 0) {
+      const hasBullish = relevantNews.some((n) => n.sentiment === 'BULLISH');
+      const hasBearish = relevantNews.some((n) => n.sentiment === 'BEARISH');
+      if (candidate.direction === 'LONG' && hasBullish && !hasBearish) {
+        newsScore = 10;
+        notes.push('Verified bullish news catalyst (+10 pts)');
+      } else if (candidate.direction === 'SHORT' && hasBearish && !hasBullish) {
+        newsScore = 10;
+        notes.push('Verified bearish headline catalyst (+10 pts)');
+      } else if ((candidate.direction === 'LONG' && hasBearish) || (candidate.direction === 'SHORT' && hasBullish)) {
+        newsScore = 0;
+        notes.push('Conflicting news catalyst headwind (0 pts)');
+      } else {
+        newsScore = 5;
+        notes.push('Neutral company headline context (+5 pts)');
+      }
     } else {
       newsScore = 5;
+      notes.push('No stock-specific news catalyst (neutral 5 pts)');
     }
+  } else {
+    newsScore = 5;
+    notes.push('News feed neutral / unavailable (+5 pts)');
   }
 
   const totalScore = setupQuality + trendScore + volumeScore + momentumScore + regimeScore + newsScore;
@@ -316,26 +332,45 @@ export function rankIntradayOpportunities(
     regime?: MacroRegimeAssessment;
     newsItems?: VerifiedNewsItem[];
     isMarketOpen?: boolean;
+    dataMode?: 'LIVE_MARKET' | 'DEMO_FIXTURE';
+    failedSymbols?: { symbol: string; reason: string }[];
   } = {}
 ): DecisionEngineResult {
+  const dataMode = options.dataMode ?? 'DEMO_FIXTURE';
+  const marketStatus = getMarketStatus();
+  const isMarketOpen = options.isMarketOpen !== undefined ? options.isMarketOpen : marketStatus.isOpen;
+  const failedSymbols = options.failedSymbols ?? [];
   const equity = options.accountEquityINR ?? 100000;
   const cash = options.availableCashINR ?? equity;
   const openPos = options.currentOpenPositions ?? 0;
   const lossToday = options.dailyRealizedLossINR ?? 0;
   const riskCfg = options.riskConfig ?? DEFAULT_RISK_CONFIG;
-  const isMarketOpen = options.isMarketOpen ?? true;
 
   const reasonsToAvoid: string[] = [];
 
   if (!isMarketOpen) {
-    reasonsToAvoid.push('Indian markets are currently closed (Regular trading hours: 09:15 to 15:30 IST).');
+    reasonsToAvoid.push(`Indian markets are currently closed (${marketStatus.label}). Regular trading hours: 09:15 to 15:30 IST.`);
   }
 
   if (candidates.length === 0) {
     reasonsToAvoid.push('No technical setups detected across the scanned universe.');
   }
 
-  const eligibleCandidates = candidates.filter((c) => c.isTradableCashEquity);
+  if (failedSymbols.length > 0) {
+    reasonsToAvoid.push(`${failedSymbols.length} instrument(s) failed live data fetch/validation and were excluded from signal generation.`);
+  }
+
+  // Filter candidates: if in LIVE_MARKET mode, strictly exclude any fixture/synthetic setups
+  const eligibleCandidates = candidates.filter((c) => {
+    if (!c.isTradableCashEquity) return false;
+    if (dataMode === 'LIVE_MARKET') {
+      if (c.id.includes('fixture') || (c as any).isFixture || (c as any).dataSource?.includes('Fixture')) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   const disqualifiedProxies = candidates.filter((c) => !c.isTradableCashEquity);
 
   const ranked: RankedOpportunity[] = [];
@@ -421,7 +456,7 @@ export function rankIntradayOpportunities(
 
   if (!isMarketOpen) {
     verdict = 'NO_TRADE';
-    verdictReason = 'NO TRADE: Indian markets are currently closed. Intraday execution is only valid between 09:15 and 15:15 IST.';
+    verdictReason = `NO TRADE: Indian markets are currently closed (${marketStatus.label}). Intraday execution is only valid between 09:15 and 15:15 IST.`;
   } else if (topCandidate && topCandidate.totalScore >= 65 && topCandidate.tradePlan && topCandidate.riskEvaluation.isApproved) {
     verdict = 'STRONG_QUALIFIED_SETUP';
     verdictReason = `QUALIFIED: ${topCandidate.candidate.symbol} achieved top composite score (${topCandidate.totalScore}/100) with verified net R:R ${topCandidate.candidate.netRewardRiskRatio.toFixed(2)} and fully compliant SEBI margin sizing.`;
@@ -439,9 +474,12 @@ export function rankIntradayOpportunities(
     verdict,
     verdictReason,
     evaluationTimestampIST: nowIST,
+    dataMode,
+    isMarketOpen,
     totalCandidatesEvaluated: candidates.length,
     eligibleTradableCount: eligibleCandidates.length,
     disqualifiedIndexProxyCount: disqualifiedProxies.length,
+    failedSymbolsCount: failedSymbols.length,
     topOpportunity: verdict === 'STRONG_QUALIFIED_SETUP' ? topCandidate : null,
     rankedOpportunities: ranked,
     reasonsToAvoidTrading: reasonsToAvoid,

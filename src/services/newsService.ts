@@ -340,6 +340,33 @@ export async function fetchLiveMarketNews(query: string = 'Indian Stock Market N
   }
 }
 
+let cachedNewsData: {
+  result: NewsFeedResult;
+  cacheTimestamp: number;
+} | null = null;
+
+/**
+ * Cached accessor for verified market news feed (5-minute TTL).
+ * Prevents unnecessary repeated network queries while keeping news fresh.
+ */
+export async function fetchCachedLiveNews(
+  forceRefresh: boolean = false,
+  query: string = 'Indian Stock Market Nifty NSE',
+  limit: number = 25
+): Promise<NewsFeedResult> {
+  const now = Date.now();
+  if (!forceRefresh && cachedNewsData && now - cachedNewsData.cacheTimestamp < 5 * 60 * 1000) {
+    return cachedNewsData.result;
+  }
+
+  const res = await fetchLiveMarketNews(query);
+  cachedNewsData = {
+    result: res,
+    cacheTimestamp: now,
+  };
+  return res;
+}
+
 /**
  * Creates deterministic news fixture for testing and offline simulations.
  */

@@ -13,6 +13,7 @@ import {
   isCandleComplete,
   parseYahooIntradayResponse,
   createDeterministicIntradayFixture,
+  validateLiveIntradayFreshness,
 } from './intradayData.ts';
 
 test('[STAGE 4D INTRADAY] Interval and range validation', () => {
@@ -114,3 +115,56 @@ test('[STAGE 4D INTRADAY] Deduplication and out-of-order sorting', () => {
   assert.strictEqual(parsed.candles[1].timestamp, 1700000600 * 1000);
   assert.strictEqual(parsed.candles[2].timestamp, 1700000900 * 1000);
 });
+
+test('[STAGE 4D INTRADAY] Freshness validation rejects offline fixtures and stale candles in live mode', () => {
+  // 1. Offline fixture is never marked as live fresh data
+  const fixture = createDeterministicIntradayFixture('RELIANCE.NS', '2026-10-29', '5m', 2500);
+  const resFixture = validateLiveIntradayFreshness(fixture);
+  assert.strictEqual(resFixture.isFresh, false);
+  assert.strictEqual(resFixture.dataStatus, 'OFFLINE_DEMO');
+
+  // 2. Live series during market hours (e.g. 2026-10-29 11:30 IST)
+  // 2026-10-29 11:30:00 IST = 2026-10-29 06:00:00 UTC
+  const nowDuringMarketMs = Date.UTC(2026, 9, 29, 6, 0, 0);
+  // Candle 90 minutes old (10:00 IST) -> STALE_DATA
+  const staleBarSec = Math.floor((nowDuringMarketMs - 90 * 60 * 1000) / 1000);
+  const staleYahooJson = {
+    chart: {
+      result: [
+        {
+          meta: { symbol: 'INFY.NS', currency: 'INR' },
+          timestamp: [staleBarSec],
+          indicators: {
+            quote: [{ open: [1800], high: [1810], low: [1795], close: [1805], volume: [10000] }],
+          },
+        },
+      ],
+    },
+  };
+  const parsedStale = parseYahooIntradayResponse(staleYahooJson, 'INFY.NS', '5m', '1d', nowDuringMarketMs);
+  const resStale = validateLiveIntradayFreshness(parsedStale, nowDuringMarketMs);
+  assert.strictEqual(resStale.isFresh, false);
+  assert.strictEqual(resStale.dataStatus, 'STALE_DATA');
+  assert.ok(resStale.reason?.includes('stale'));
+
+  // 3. Fresh candle 15 minutes old (11:15 IST) -> LIVE_INTRADAY & isFresh = true
+  const freshBarSec = Math.floor((nowDuringMarketMs - 15 * 60 * 1000) / 1000);
+  const freshYahooJson = {
+    chart: {
+      result: [
+        {
+          meta: { symbol: 'INFY.NS', currency: 'INR' },
+          timestamp: [freshBarSec],
+          indicators: {
+            quote: [{ open: [1800], high: [1810], low: [1795], close: [1805], volume: [10000] }],
+          },
+        },
+      ],
+    },
+  };
+  const parsedFresh = parseYahooIntradayResponse(freshYahooJson, 'INFY.NS', '5m', '1d', nowDuringMarketMs);
+  const resFresh = validateLiveIntradayFreshness(parsedFresh, nowDuringMarketMs);
+  assert.strictEqual(resFresh.isFresh, true);
+  assert.strictEqual(resFresh.dataStatus, 'LIVE_INTRADAY');
+});
+

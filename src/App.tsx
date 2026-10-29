@@ -1353,14 +1353,14 @@ export default function App() {
 
       // 57. Smart Decision Engine: Market Universe Discovery & Management
       const mgr57 = new MarketUniverseManager([...DEFAULT_NSE_UNIVERSE]);
-      const addRes57 = mgr57.addSymbol('bajaj-auto');
-      const dupRes57 = mgr57.addSymbol('BAJAJ-AUTO.NS');
+      const addRes57 = mgr57.addSymbol('zomato');
+      const dupRes57 = mgr57.addSymbol('ZOMATO.NS');
       const tradable57 = mgr57.getTradableEquities();
       const indices57 = mgr57.getContextIndices();
       const passed57 =
-        mgr57.getAllInstruments().length >= 24 &&
+        mgr57.getAllInstruments().length >= 40 &&
         addRes57.success === true &&
-        addRes57.instrument?.symbol === 'BAJAJ-AUTO.NS' &&
+        addRes57.instrument?.symbol === 'ZOMATO.NS' &&
         dupRes57.success === false &&
         tradable57.every((i) => i.type === 'EQUITY') &&
         indices57.every((i) => i.type === 'INDEX');
@@ -1369,7 +1369,7 @@ export default function App() {
         name: 'Decision Engine Universe: Liquid Blue Chips, Custom Symbols & Tradability Tagging',
         category: 'Decision Engine Universe',
         passed: passed57,
-        expected: 'Universe >= 24, auto-appends .NS, prevents duplicates, tags spot indices as non-tradable',
+        expected: 'Universe >= 40, auto-appends .NS, prevents duplicates, tags spot indices as non-tradable',
         actual: `TotalInstruments: ${mgr57.getAllInstruments().length}, AutoSuffix: ${addRes57.instrument?.symbol}, DupRejected: ${!dupRes57.success}, TradableEquities: ${tradable57.length}`,
         details: 'Manages liquid NSE universe with custom additions, format validation, and clear separation between equities and non-tradable index proxies.',
       });

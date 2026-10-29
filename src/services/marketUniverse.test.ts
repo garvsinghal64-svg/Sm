@@ -43,21 +43,21 @@ test('[UNIVERSE] Add custom NSE symbol validates format and prevents duplicates'
   const mgr = new MarketUniverseManager([...DEFAULT_NSE_UNIVERSE]);
 
   // Add without suffix should auto-append .NS
-  const res1 = mgr.addSymbol('bajaj-auto', 'Bajaj Auto Ltd', 'Automobiles');
+  const res1 = mgr.addSymbol('zomato', 'Zomato Ltd', 'Consumer Tech');
   assert.strictEqual(res1.success, true);
-  assert.strictEqual(res1.instrument?.symbol, 'BAJAJ-AUTO.NS');
+  assert.strictEqual(res1.instrument?.symbol, 'ZOMATO.NS');
 
   // Duplicate add should be rejected
-  const resDup = mgr.addSymbol('BAJAJ-AUTO.NS');
+  const resDup = mgr.addSymbol('ZOMATO.NS');
   assert.strictEqual(resDup.success, false);
   assert.ok(resDup.message.includes('already exists'));
 
   // Remove symbol
-  const removed = mgr.removeSymbol('BAJAJ-AUTO.NS');
+  const removed = mgr.removeSymbol('ZOMATO.NS');
   assert.strictEqual(removed, true);
 
   // Second remove returns false
-  assert.strictEqual(mgr.removeSymbol('BAJAJ-AUTO.NS'), false);
+  assert.strictEqual(mgr.removeSymbol('ZOMATO.NS'), false);
 });
 
 test('[UNIVERSE] Filter options exclude indices when requested', () => {

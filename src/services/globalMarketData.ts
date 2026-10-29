@@ -229,6 +229,10 @@ export async function fetchMacroIndicator(
       minute: '2-digit',
     });
 
+    const ageMs = Math.max(0, Date.now() - latest.t);
+    const isRecent = ageMs < 16 * 3600 * 1000;
+    const freshness: GlobalDataFreshness = isRecent ? 'DELAYED_15M' : 'EOD_CLOSE';
+
     return {
       symbol: config.symbol,
       name: config.name,
@@ -240,8 +244,8 @@ export async function fetchMacroIndicator(
       changePercent,
       timestamp: latest.t,
       timestampIST: `${dateIST} IST`,
-      freshness: 'LIVE',
-      dataSource: 'Yahoo Finance Free Delayed/Close Endpoint (Zero Cost)',
+      freshness,
+      dataSource: `Yahoo Finance Free ${isRecent ? 'Delayed 15m' : 'Prior Close'} Endpoint (Zero Cost)`,
       relevanceToIndia: config.relevance,
       transmissionMechanism: config.transmission,
       affectedSectors: config.sectors,
@@ -266,6 +270,77 @@ export async function fetchMacroIndicator(
       affectedSectors: config.sectors,
     };
   }
+}
+
+let cachedMacroData: {
+  indicators: MacroIndicatorItem[];
+  regime: MacroRegimeAssessment;
+  isLive: boolean;
+  fetchedAtIST: string;
+  cacheTimestamp: number;
+} | null = null;
+
+/**
+ * Fetches all 9 macro indicators in bounded chunks to avoid provider throttling.
+ */
+export async function fetchAllMacroIndicators(signal?: AbortSignal): Promise<MacroIndicatorItem[]> {
+  const results: MacroIndicatorItem[] = [];
+  for (let i = 0; i < MACRO_INSTRUMENTS_CONFIG.length; i += 3) {
+    if (signal?.aborted) break;
+    const chunk = MACRO_INSTRUMENTS_CONFIG.slice(i, i + 3);
+    const chunkResults = await Promise.all(chunk.map((cfg) => fetchMacroIndicator(cfg)));
+    results.push(...chunkResults);
+    if (i + 3 < MACRO_INSTRUMENTS_CONFIG.length && !signal?.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+  }
+  return results;
+}
+
+/**
+ * Cached accessor for macro indicators and regime (5-minute TTL).
+ * Prevents hammering the Yahoo proxy on every 60-second intraday scan.
+ */
+export async function fetchCachedLiveMacroData(
+  forceRefresh: boolean = false,
+  signal?: AbortSignal
+): Promise<{
+  indicators: MacroIndicatorItem[];
+  regime: MacroRegimeAssessment;
+  isLive: boolean;
+  fetchedAtIST: string;
+}> {
+  const now = Date.now();
+  if (!forceRefresh && cachedMacroData && now - cachedMacroData.cacheTimestamp < 5 * 60 * 1000) {
+    return cachedMacroData;
+  }
+
+  const indicators = await fetchAllMacroIndicators(signal);
+  const validCount = indicators.filter((i) => i.freshness !== 'UNAVAILABLE').length;
+  const isLive = validCount >= 4;
+  const regime = assessMacroRegime(indicators);
+
+  const nowIST = new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }) + ' IST';
+
+  const result = {
+    indicators,
+    regime,
+    isLive,
+    fetchedAtIST: nowIST,
+    cacheTimestamp: now,
+  };
+
+  cachedMacroData = result;
+  return result;
 }
 
 /**

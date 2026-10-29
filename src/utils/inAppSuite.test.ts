@@ -14,14 +14,14 @@ import { scanIntradaySetups } from './intradayScanner.ts';
 
 test('[IN-APP T57] Decision Engine Universe: Liquid Blue Chips, Custom Symbols & Tradability Tagging', () => {
   const mgr = new MarketUniverseManager([...DEFAULT_NSE_UNIVERSE]);
-  const addRes = mgr.addSymbol('bajaj-auto');
-  const dupRes = mgr.addSymbol('BAJAJ-AUTO.NS');
+  const addRes = mgr.addSymbol('zomato');
+  const dupRes = mgr.addSymbol('ZOMATO.NS');
   const tradable = mgr.getTradableEquities();
   const indices = mgr.getContextIndices();
 
-  assert.ok(mgr.getAllInstruments().length >= 24);
+  assert.ok(mgr.getAllInstruments().length >= 40);
   assert.strictEqual(addRes.success, true);
-  assert.strictEqual(addRes.instrument?.symbol, 'BAJAJ-AUTO.NS');
+  assert.strictEqual(addRes.instrument?.symbol, 'ZOMATO.NS');
   assert.strictEqual(dupRes.success, false);
   assert.strictEqual(tradable.every((i) => i.type === 'EQUITY'), true);
   assert.strictEqual(indices.every((i) => i.type === 'INDEX'), true);

@@ -117,3 +117,36 @@ test('[OPPORTUNITY RANKER] Decision Engine returns explicit NO_TRADE when market
   assert.strictEqual(weakResult.verdict, 'NO_TRADE');
   assert.ok(weakResult.reasonsToAvoidTrading.length > 0);
 });
+
+test('[OPPORTUNITY RANKER] Strictly rejects fixture-derived setups when dataMode is LIVE_MARKET', () => {
+  const fixtureCandidate = createMockCandidate({
+    id: 'RELIANCE.NS_fixture_setup_1',
+    symbol: 'RELIANCE.NS',
+    netRewardRiskRatio: 2.5,
+  });
+
+  const liveResult = rankIntradayOpportunities([fixtureCandidate], {
+    accountEquityINR: 100000,
+    isMarketOpen: true,
+    dataMode: 'LIVE_MARKET',
+    failedSymbols: [{ symbol: 'TCS.NS', reason: 'HTTP 429: Rate limit exceeded' }],
+  });
+
+  assert.strictEqual(liveResult.dataMode, 'LIVE_MARKET');
+  assert.strictEqual(liveResult.eligibleTradableCount, 0);
+  assert.strictEqual(liveResult.verdict, 'NO_TRADE');
+  assert.strictEqual(liveResult.topOpportunity, null);
+  assert.strictEqual(liveResult.failedSymbolsCount, 1);
+  assert.ok(liveResult.reasonsToAvoidTrading.some((r) => r.includes('failed live data fetch')));
+});
+
+test('[OPPORTUNITY RANKER] Assigns neutral scores when macro or news feeds are unavailable without using fixture data', () => {
+  const cand = createMockCandidate();
+  const scoreWithoutFeeds = calculateCandidateScore(cand, undefined, []);
+
+  assert.strictEqual(scoreWithoutFeeds.regimeSynergyScore, 5);
+  assert.strictEqual(scoreWithoutFeeds.newsCatalystScore, 5);
+  assert.ok(scoreWithoutFeeds.scoringNotes.some((n) => n.includes('Macro data neutral / unavailable')));
+  assert.ok(scoreWithoutFeeds.scoringNotes.some((n) => n.includes('News feed neutral / unavailable')));
+});
+

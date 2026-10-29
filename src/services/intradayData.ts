@@ -24,6 +24,7 @@ export type IntradayDataStatus =
   | 'LIVE_INTRADAY'
   | 'DELAYED_INTRADAY'
   | 'CLOSED_EOD'
+  | 'STALE_DATA'
   | 'OFFLINE_DEMO'
   | 'UNAVAILABLE_ERROR';
 
@@ -470,6 +471,98 @@ export function createDeterministicIntradayFixture(
   };
 }
 
+export interface FreshnessValidationResult {
+  isFresh: boolean;
+  dataStatus: IntradayDataStatus;
+  reason?: string;
+  ageMinutes: number;
+  latestCandleTimestampIST?: string;
+  source: string;
+}
+
+/**
+ * Validates the timeliness, source integrity, and freshness of an intraday series.
+ * Prevents using stale bars (>45m old) or previous day EOD data for live trading signals.
+ */
+export function validateLiveIntradayFreshness(
+  series: IntradaySeries,
+  nowMs: number = Date.now()
+): FreshnessValidationResult {
+  const meta = series.metadata;
+  const source = meta.dataSource || 'Unknown Provider';
+
+  if (!series.candles || series.candles.length === 0) {
+    return {
+      isFresh: false,
+      dataStatus: 'UNAVAILABLE_ERROR',
+      reason: 'No candle bars returned by provider.',
+      ageMinutes: Infinity,
+      source,
+    };
+  }
+
+  if (meta.dataStatus === 'OFFLINE_DEMO') {
+    return {
+      isFresh: false,
+      dataStatus: 'OFFLINE_DEMO',
+      reason: 'Series is an offline demo/test fixture, not live market data.',
+      ageMinutes: 0,
+      latestCandleTimestampIST: meta.latestBarTimestampIST,
+      source,
+    };
+  }
+
+  const latest = series.candles[series.candles.length - 1];
+  if (!latest || !latest.isValid) {
+    return {
+      isFresh: false,
+      dataStatus: 'UNAVAILABLE_ERROR',
+      reason: `Latest candle is invalid: ${latest?.validationError || 'Missing bar data'}`,
+      ageMinutes: Infinity,
+      source,
+    };
+  }
+
+  const nowIST = getISTTimeComponents(nowMs);
+  const isMarketOpenNow = isWithinRegularISTTradingHours(nowIST.hours, nowIST.minutes);
+  const ageMs = Math.max(0, nowMs - latest.timestamp);
+  const ageMinutes = Math.round((ageMs / (60 * 1000)) * 10) / 10;
+
+  // Check if candle date matches current IST date
+  if (isMarketOpenNow && latest.dateString !== nowIST.dateStr) {
+    return {
+      isFresh: false,
+      dataStatus: 'CLOSED_EOD',
+      reason: `Latest candle date (${latest.dateString}) is from a prior session, but market is open today (${nowIST.dateStr}).`,
+      ageMinutes,
+      latestCandleTimestampIST: latest.timestampIST,
+      source,
+    };
+  }
+
+  // During active market hours after the opening 30 mins, free Yahoo delayed data should not lag by >45m
+  const sessionMins = getSessionMinute(nowIST.hours, nowIST.minutes);
+  if (isMarketOpenNow && sessionMins > 30 && ageMinutes > 45) {
+    return {
+      isFresh: false,
+      dataStatus: 'STALE_DATA',
+      reason: `Data is stale: latest candle is ${ageMinutes}m old (exceeds allowable 45m delay window during market hours).`,
+      ageMinutes,
+      latestCandleTimestampIST: latest.timestampIST,
+      source,
+    };
+  }
+
+  return {
+    isFresh: isMarketOpenNow,
+    dataStatus: isMarketOpenNow ? 'LIVE_INTRADAY' : 'CLOSED_EOD',
+    reason: isMarketOpenNow ? undefined : 'Market is currently closed (EOD close data).',
+    ageMinutes,
+    latestCandleTimestampIST: latest.timestampIST,
+    source,
+  };
+}
+
 /**
  * Fetches real intraday series via the zero-cost Yahoo Finance proxy (/api/yahoo/v8/finance/chart/{symbol}).
  * Returns verified parsed IntradaySeries or throws descriptive error.
@@ -477,17 +570,39 @@ export function createDeterministicIntradayFixture(
 export async function fetchLiveIntradaySeries(
   symbol: string,
   interval: IntradayInterval = '5m',
-  range: IntradayRange = '1d'
+  range: IntradayRange = '1d',
+  signal?: AbortSignal
 ): Promise<IntradaySeries> {
   const encoded = encodeURIComponent(symbol);
   const endpoint = `/api/yahoo/v8/finance/chart/${encoded}?interval=${interval}&range=${range}`;
 
-  const res = await fetch(endpoint);
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: Failed to fetch intraday data for ${symbol}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort());
   }
 
-  const json = await res.json();
-  return parseYahooIntradayResponse(json, symbol, interval, range, Date.now());
+  try {
+    const res = await fetch(endpoint, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.status === 429) {
+      throw new Error(`Rate limit exceeded (HTTP 429): Provider throttled requests for ${symbol}. Please wait before retrying.`);
+    }
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: Failed to fetch intraday data for ${symbol}`);
+    }
+
+    const json = await res.json();
+    return parseYahooIntradayResponse(json, symbol, interval, range, Date.now());
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error(`Request timeout: Live provider did not respond within 8 seconds for ${symbol}`);
+    }
+    throw err;
+  }
 }
 

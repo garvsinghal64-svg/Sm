@@ -45,7 +45,17 @@ export interface UniverseScanProgress {
   percentComplete: number;
   isComplete: boolean;
   errorMessages: string[];
+  failedInstruments: { symbol: string; reason: string }[];
 }
+
+export const UNIVERSE_COVERAGE_METADATA = {
+  coverageScope: 'Curated Liquid NIFTY 50 & Active F&O Equities',
+  totalDefaultEquities: 45,
+  supportedBenchmarkIndices: 3,
+  limitationsDisclosure:
+    'Full exchange coverage of all 2,000+ NSE equities is not possible under ₹0 budget without licensed commercial exchange feeds. Calling 2,000 tickers on free endpoints triggers HTTP 429 throttling and network drops. The platform focuses on the highest-liquidity NIFTY 50 equities that represent >65% of cash market turnover.',
+  rateLimitSafety: 'Concurrency capped at 3-4 parallel requests with inter-batch backoff delays.',
+};
 
 /**
  * Predefined liquid NSE universe covering benchmark indices and major NIFTY 50 blue chips.
@@ -82,6 +92,27 @@ export const DEFAULT_NSE_UNIVERSE: UniverseInstrument[] = [
   { symbol: 'POWERGRID.NS', name: 'Power Grid Corp of India', exchange: 'NSE', type: 'EQUITY', sector: 'Utilities & Power' },
   { symbol: 'NTPC.NS', name: 'NTPC Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Utilities & Power' },
   { symbol: 'ULTRACEMCO.NS', name: 'UltraTech Cement Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Materials & Cement' },
+  { symbol: 'BAJAJFINSV.NS', name: 'Bajaj Finserv Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'NBFC / Financial Services' },
+  { symbol: 'HCLTECH.NS', name: 'HCL Technologies Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Information Technology' },
+  { symbol: 'ASIANPAINT.NS', name: 'Asian Paints Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Consumer Discretionary / Paints' },
+  { symbol: 'NESTLEIND.NS', name: 'Nestle India Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Consumer Goods (FMCG)' },
+  { symbol: 'JSWSTEEL.NS', name: 'JSW Steel Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Metals & Mining' },
+  { symbol: 'HINDALCO.NS', name: 'Hindalco Industries Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Metals & Mining' },
+  { symbol: 'COALINDIA.NS', name: 'Coal India Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Energy & Mining' },
+  { symbol: 'ONGC.NS', name: 'Oil & Natural Gas Corp Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Energy & Oil' },
+  { symbol: 'BPCL.NS', name: 'Bharat Petroleum Corp Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Energy & Oil' },
+  { symbol: 'GRASIM.NS', name: 'Grasim Industries Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Materials & Conglomerate' },
+  { symbol: 'DRREDDY.NS', name: "Dr. Reddy's Laboratories", exchange: 'NSE', type: 'EQUITY', sector: 'Pharmaceuticals' },
+  { symbol: 'CIPLA.NS', name: 'Cipla Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Pharmaceuticals' },
+  { symbol: 'HEROMOTOCO.NS', name: 'Hero MotoCorp Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Automobiles' },
+  { symbol: 'EICHERMOT.NS', name: 'Eicher Motors Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Automobiles' },
+  { symbol: 'TECHM.NS', name: 'Tech Mahindra Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Information Technology' },
+  { symbol: 'DIVISLAB.NS', name: "Divi's Laboratories Ltd", exchange: 'NSE', type: 'EQUITY', sector: 'Pharmaceuticals' },
+  { symbol: 'APOLLOHOSP.NS', name: 'Apollo Hospitals Enterprise', exchange: 'NSE', type: 'EQUITY', sector: 'Healthcare' },
+  { symbol: 'BAJAJ-AUTO.NS', name: 'Bajaj Auto Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Automobiles' },
+  { symbol: 'INDUSINDBK.NS', name: 'IndusInd Bank Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Banking & Financials' },
+  { symbol: 'TRENT.NS', name: 'Trent Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Consumer Retail' },
+  { symbol: 'BEL.NS', name: 'Bharat Electronics Ltd', exchange: 'NSE', type: 'EQUITY', sector: 'Defense & Aerospace' },
 ];
 
 /**
@@ -223,6 +254,7 @@ export async function executeBatchScan<T>(
 
   const results: { instrument: UniverseInstrument; data?: T; error?: string }[] = [];
   const errors: string[] = [];
+  const failedInstruments: { symbol: string; reason: string }[] = [];
   let scannedCount = 0;
   let qualifiedCount = 0;
   let failedCount = 0;
@@ -242,6 +274,7 @@ export async function executeBatchScan<T>(
       } catch (err: any) {
         const errorMsg = `${inst.symbol}: ${err?.message || 'Scan failed'}`;
         errors.push(errorMsg);
+        failedInstruments.push({ symbol: inst.symbol, reason: err?.message || 'Scan failed' });
         return { instrument: inst, error: errorMsg };
       }
     });
@@ -268,6 +301,7 @@ export async function executeBatchScan<T>(
         percentComplete: Math.round((scannedCount / total) * 100),
         isComplete: scannedCount >= total,
         errorMessages: [...errors],
+        failedInstruments: [...failedInstruments],
       });
     }
 
@@ -287,6 +321,7 @@ export async function executeBatchScan<T>(
     percentComplete: 100,
     isComplete: true,
     errorMessages: errors,
+    failedInstruments,
   };
 
   return { results, summary };
